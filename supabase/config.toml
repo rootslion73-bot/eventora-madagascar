@@ -1,0 +1,6 @@
+[functions.papi-create-payment]
+verify_jwt = true
+[functions.papi-sync-payment]
+verify_jwt = true
+[functions.papi-webhook]
+verify_jwt = false

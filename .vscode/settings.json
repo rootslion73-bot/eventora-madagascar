@@ -1,0 +1,4 @@
+{
+  "js/ts.preferences.includePackageJsonAutoImports": "auto",
+  "deno.enablePaths": ["./supabase/functions"]
+}
