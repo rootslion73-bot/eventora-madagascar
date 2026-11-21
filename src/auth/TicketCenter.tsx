@@ -8,6 +8,11 @@ import {
   respondToAccommodationRequest,
   type VisibleAccommodationRequest,
 } from "../lib/accommodations";
+import {
+  fetchVisibleTransportRequests,
+  respondToTransportRequest,
+  type VisibleTransportRequest,
+} from "../lib/transport";
 
 type OwnedTicket = {
   id: string;
@@ -191,12 +196,17 @@ export default function TicketCenter() {
   const [respondingToRequest, setRespondingToRequest] = useState<string | null>(
     null,
   );
+  const [transportRequests, setTransportRequests] = useState<
+    VisibleTransportRequest[]
+  >([]);
+  const [transportError, setTransportError] = useState<string | null>(null);
 
   const loadAccountData = async () => {
     if (!supabase || !user) {
       setTickets([]);
       setOrders([]);
       setAccommodationRequests([]);
+      setTransportRequests([]);
       setCanScan(false);
       setTicketLoading(false);
       return;
@@ -206,10 +216,12 @@ export default function TicketCenter() {
     setTickets([]);
     setOrders([]);
     setAccommodationRequests([]);
+    setTransportRequests([]);
     setTicketError(null);
     setOrderError(null);
     setRoleError(null);
     setAccommodationError(null);
+    setTransportError(null);
     try {
       const [ticketResponse, roleResponse, orderResponse] = await Promise.all([
         supabase
@@ -273,6 +285,15 @@ export default function TicketCenter() {
           error instanceof Error
             ? error.message
             : "Impossible de charger les demandes d’hébergement.",
+        );
+      }
+      try {
+        setTransportRequests(await fetchVisibleTransportRequests());
+      } catch (error) {
+        setTransportError(
+          error instanceof Error
+            ? error.message
+            : "Impossible de charger les demandes de transport.",
         );
       }
     } catch (error) {
@@ -368,6 +389,39 @@ export default function TicketCenter() {
     }
   };
 
+  const respondToTransport = async (
+    requestId: string,
+    confirm: boolean,
+  ) => {
+    setRespondingToRequest(requestId);
+    setTransportError(null);
+    try {
+      const status = await respondToTransportRequest(requestId, confirm);
+      setTransportRequests((requests) =>
+        requests.map((request) =>
+          request.id === requestId ? { ...request, status } : request,
+        ),
+      );
+      try {
+        setTransportRequests(await fetchVisibleTransportRequests());
+      } catch (error) {
+        setTransportError(
+          error instanceof Error
+            ? `Réponse enregistrée, mais le rafraîchissement a échoué : ${error.message}`
+            : "Réponse enregistrée, mais le rafraîchissement a échoué.",
+        );
+      }
+    } catch (error) {
+      setTransportError(
+        error instanceof Error
+          ? error.message
+          : "La réponse à la demande de transport a échoué.",
+      );
+    } finally {
+      setRespondingToRequest(null);
+    }
+  };
+
   return (
     <div className="ticket-center">
       <section
@@ -425,6 +479,77 @@ export default function TicketCenter() {
                           disabled={respondingToRequest !== null}
                           onClick={() =>
                             void respondToRequest(request.id, false)
+                          }
+                        >
+                          Refuser
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        )}
+      </section>
+
+      <section
+        className="ticket-center-section"
+        aria-labelledby="transport-requests"
+      >
+        <h3 id="transport-requests">Demandes de transport</h3>
+        {transportError ? (
+          <p className="auth-feedback auth-error" role="alert">
+            {transportError}
+          </p>
+        ) : transportRequests.length === 0 ? (
+          <p className="dialog-description">
+            Aucune demande de transport à afficher.
+          </p>
+        ) : (
+          <div className="owned-order-list">
+            {transportRequests.map((request) => {
+              const isCarrierRequest = request.customerId !== user?.id;
+              const canRespond =
+                isCarrierRequest && request.status === "requested";
+              return (
+                <article className="owned-order" key={request.id}>
+                  <div>
+                    <strong>
+                      {request.operator} · {request.origin} →{" "}
+                      {request.destination}
+                    </strong>
+                    <small>
+                      {reservationStatusLabels[request.status] ??
+                        request.status}
+                    </small>
+                    <small>
+                      Départ prévu : {formatStayDate(request.departureAt)} ·{" "}
+                      {request.passengerCount} passager
+                      {request.passengerCount === 1 ? "" : "s"}
+                    </small>
+                    <small>
+                      Budget indicatif : {formatMGA(request.budgetMGA)} / passager
+                    </small>
+                    {request.message && <small>{request.message}</small>}
+                    {canRespond && (
+                      <div className="stay-request-actions">
+                        <button
+                          type="button"
+                          disabled={respondingToRequest !== null}
+                          onClick={() =>
+                            void respondToTransport(request.id, true)
+                          }
+                        >
+                          {respondingToRequest === request.id
+                            ? "Traitement…"
+                            : "Confirmer le trajet"}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={respondingToRequest !== null}
+                          onClick={() =>
+                            void respondToTransport(request.id, false)
                           }
                         >
                           Refuser

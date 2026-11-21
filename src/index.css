@@ -906,6 +906,25 @@ a {
 .trip-details svg {
   flex: 0 0 15px;
 }
+.trip-request-conditions {
+  margin: 8px 0;
+  padding: 10px 12px;
+  border: 1px solid #ece8f1;
+  border-radius: 6px;
+  color: #77717f;
+  background: #fcfbfe;
+  font-size: 10px;
+  line-height: 1.5;
+}
+.trip-request-conditions p {
+  margin: 0;
+}
+.trip-request-conditions p + p {
+  margin-top: 6px;
+}
+.trip-request-conditions strong {
+  color: #332d3f;
+}
 .listing-price-row {
   display: flex;
   align-items: baseline;

@@ -1,10 +1,10 @@
-# eventora-madagascar — Eventora Madagascar, étapes 1 à 5
+# eventora-madagascar — Eventora Madagascar, étapes 1 à 6
 
-Interface responsive pour explorer des événements, des hébergements et des trajets à Madagascar. Les étapes 2 à 5 ajoutent l’authentification Supabase, la billetterie transactionnelle, le checkout Papi sandbox et les demandes d’hébergement confirmées par les partenaires.
+Interface responsive pour explorer des événements, des hébergements et des trajets à Madagascar. Les étapes 2 à 6 ajoutent l’authentification Supabase, la billetterie transactionnelle, le checkout Papi sandbox et les demandes de réservation traitées manuellement par les partenaires.
 
 ## Important
 
-Les offres locales sans badge « Partenaire » sont fictives. Avec Supabase configuré, les événements et hébergements publiés proviennent de la base ; toute demande de séjour reste à confirmer par le partenaire. Une commande de billets réserve le stock temporairement. Le checkout Papi n'accepte que des clés explicitement configurées comme sandbox ; sans elles, il reste désactivé. Les billets et QR codes sont émis uniquement après vérification de la notification signée du prestataire ou relecture authentifiée du statut. Les trajets et le panier de démonstration restent fictifs. Les photos de la démo proviennent d'Unsplash et nécessitent une connexion Internet.
+Les offres locales sans badge « Partenaire » sont fictives. Avec Supabase configuré, les événements, hébergements et trajets partenaires publiés proviennent de la base. Les demandes de séjour et de transport doivent être explicitement confirmées par le partenaire ; une demande de trajet ne réserve aucune place. Une commande de billets réserve le stock temporairement. Le checkout Papi n'accepte que des clés explicitement configurées comme sandbox ; sans elles, il reste désactivé. Les billets et QR codes sont émis uniquement après vérification de la notification signée du prestataire ou relecture authentifiée du statut. Le panier de démonstration reste fictif. Les photos de la démo proviennent d'Unsplash et nécessitent une connexion Internet.
 
 ## Lancer l'application
 
@@ -22,7 +22,7 @@ Pour vérifier la version de production : exécuter `npm run build`, puis `npm r
 - Utiliser les pilules de recherche fréquente au-dessus des offres pour appliquer directement les filtres Tana–Fianarantsoa, concerts du week-end, Nosy Be ou taxi-brousse VIP.
 - Pour les autres services, filtrer par mot-clé, ville, catégorie, date d'événement ou budget maximum. Le compteur d'offres se met à jour immédiatement. La date de départ d'un trajet reste indicative et doit être confirmée par le transporteur.
 - Utiliser « Effacer les filtres » pour revenir à l'ensemble des offres de démonstration.
-- Cliquer n'importe où sur une carte d'offre pour ouvrir sa fiche. La carte « Cap au sud » indique un taxi-brousse Sprinter et une durée estimée, tous deux fictifs et indicatifs. Les événements peuvent être ajoutés au panier de démonstration. Les séjours fictifs ne transmettent pas de demande ; un hébergement publié dans Supabase permet d’envoyer une demande qui doit être confirmée par le partenaire.
+- Cliquer n'importe où sur une carte d'offre pour ouvrir sa fiche. La carte « Cap au sud » indique un taxi-brousse Sprinter et une durée estimée, tous deux fictifs et indicatifs. Les événements peuvent être ajoutés au panier de démonstration. Les séjours fictifs ne transmettent pas de demande ; un hébergement ou un trajet publié dans Supabase permet d’envoyer une demande réelle, toujours soumise à la confirmation manuelle du partenaire.
 - Après configuration des migrations, les événements publiés par des partenaires approuvés apparaissent avec leurs catégories de billets et le stock disponible. Une commande nécessite une connexion et crée une commande en attente. Le stock est réservé de façon transactionnelle et libéré à son expiration si le paiement n'est pas vérifié.
 - Pour tester le paiement, déployer les fonctions Edge Papi et fournir uniquement les clés d'une boutique Papi sandbox. Le paiement utilise le checkout hébergé Papi ; l'interface ne collecte pas de données de carte ou de codes Mobile Money.
 - Les billets payés et le validateur sont accessibles depuis « Mon compte » après authentification. Le code QR n'est visible que pour un billet lié à une commande payée ; le validateur serveur accepte chaque billet une seule fois et vérifie que le compte organisateur est autorisé pour l'événement.
@@ -32,7 +32,7 @@ Pour vérifier la version de production : exécuter `npm run build`, puis `npm r
 - Vérifier les messages de démonstration : ils précisent qu'aucune réservation, disponibilité, demande ou transaction réelle n'est confirmée.
 - Tester le menu mobile : il coulisse depuis la droite et affiche ses actions en liste verticale. Il se ferme en touchant l’arrière-plan, en faisant défiler la page ou avec Échap.
 
-## Configurer Supabase (étapes 2 à 5)
+## Configurer Supabase (étapes 2 à 6)
 
 1. Créer un projet Supabase et ouvrir **Project Settings → API**.
 2. Dans un terminal PowerShell ouvert dans le dossier du projet, exécuter `Copy-Item .env.example .env.local`, puis ouvrir `.env.local` et y renseigner l'URL du projet et sa **Publishable key** (`VITE_SUPABASE_URL` et `VITE_SUPABASE_PUBLISHABLE_KEY`). Cette clé publique est prévue pour le navigateur ; ne jamais utiliser ni exposer une clé `service_role` ou une clé secrète.
@@ -54,7 +54,7 @@ Pour vérifier la version de production : exécuter `npm run build`, puis `npm r
    ```
 
 6. Exécuter [`supabase/migrations/20261115020000_papi_payments.sql`](./supabase/migrations/20261115020000_papi_payments.sql) après les migrations des étapes 2 et 3.
-7. Dans le SQL Editor, exécuter [`supabase/migrations/20261116030000_accommodation_requests.sql`](./supabase/migrations/20261116030000_accommodation_requests.sql), puis [`supabase/migrations/20261116040000_payment_retries.sql`](./supabase/migrations/20261116040000_payment_retries.sql), après les étapes précédentes. Si vous gérez déjà l’historique des migrations avec la CLI, vérifiez que les migrations exécutées manuellement sont enregistrées avant d’utiliser `supabase db push`.
+7. Dans le SQL Editor, exécuter dans l’ordre [`supabase/migrations/20261116030000_accommodation_requests.sql`](./supabase/migrations/20261116030000_accommodation_requests.sql), [`supabase/migrations/20261116040000_payment_retries.sql`](./supabase/migrations/20261116040000_payment_retries.sql), puis [`supabase/migrations/20261116050000_transport_requests.sql`](./supabase/migrations/20261116050000_transport_requests.sql). Si vous gérez déjà l’historique des migrations avec la CLI, vérifiez que les migrations exécutées manuellement sont enregistrées avant d’utiliser `supabase db push`.
 8. Redémarrer `npm run dev`. Les comptes sont conservés par Supabase. Si le catalogue affiche une erreur de colonne manquante, vérifier que les migrations ont été exécutées dans l'ordre.
 
 ### Tester une commande en attente
@@ -140,6 +140,14 @@ La migration ne donne pas aux clients le droit d’écrire directement dans `res
 
 La migration `20261116040000_payment_retries.sql` permet de préparer une nouvelle tentative après un paiement échoué ou un lien Papi expiré tout en conservant les anciennes références pour rapprocher un callback tardif. Les tests de paiement doivent inclure un échec suivi d’une nouvelle tentative et un callback tardif de l’ancien lien.
 
+## Activer les demandes de transport (étape 6)
+
+Après les migrations précédentes, exécuter [`supabase/migrations/20261116050000_transport_requests.sql`](./supabase/migrations/20261116050000_transport_requests.sql) dans le SQL Editor Supabase. Elle ajoute les champs bagages/conditions, les demandes avec informations de trajet conservées en instantané et les fonctions serveur de demande et de réponse.
+
+Les offres de transport doivent être publiées par un partenaire approuvé avec une date de départ future et `manual_confirmation = true`. Les clients peuvent filtrer la liste par départ, destination et date, puis demander un trajet pour 1 à 20 passagers. L’envoi crée seulement une demande `requested` : il ne réserve pas de siège et ne confirme pas le prix. Dans « Mon compte », le transporteur propriétaire peut accepter ou refuser la demande. L’acceptation vérifie et met à jour le nombre de places sous verrou transactionnel ; les offres sans capacité déclarée ne peuvent pas être confirmées dans l’application.
+
+Pour la mise en ligne GitHub Pages, le workflow [`.github/workflows/deploy.yml`](./.github/workflows/deploy.yml) vérifie le build des pull requests et publie le dossier `dist/` après un push ou une fusion sur `main`. Le `base` Vite reste `/eventora-madagascar/`, nécessaire pour ce dépôt Pages. Si l’authentification/catalogue Supabase doit fonctionner sur le site publié, ajouter `VITE_SUPABASE_URL` et `VITE_SUPABASE_PUBLISHABLE_KEY` dans **GitHub → Settings → Secrets and variables → Actions**. N’ajoutez jamais une clé `service_role`, une clé secrète Supabase ou un secret Papi à GitHub côté frontend. Les migrations SQL et les Edge Functions ne sont pas déployées par le workflow Pages et doivent être appliquées/déployées séparément.
+
 ## Suite prévue
 
-L’étape 6 portera sur les trajets et les intégrations de fournisseurs disponibles.
+La prochaine étape portera sur les intégrations de fournisseurs de transport lorsqu’un partenaire et une API autorisée seront disponibles.

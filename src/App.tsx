@@ -14,6 +14,11 @@ import {
   fetchPublishedAccommodations,
   type PublishedAccommodation,
 } from "./lib/accommodations";
+import {
+  createTransportRequest,
+  fetchPublishedTransportOffers,
+  type PublishedTransportOffer,
+} from "./lib/transport";
 
 type Service = "Tout" | "Événements" | "Séjours" | "Voyages";
 type HeaderAction = "login" | "signup" | "help";
@@ -34,6 +39,10 @@ type Listing = {
   ticketOptions?: TicketOption[];
   tripVehicle?: string;
   tripDuration?: string;
+  transportOfferId?: string;
+  departureAt?: string;
+  tripBaggage?: string;
+  tripConditions?: string;
 };
 type QuickSearch =
   | "tana-fianarantsoa"
@@ -157,6 +166,44 @@ const formatDate = (date: string) =>
     dateStyle: "medium",
     timeZone: "UTC",
   }).format(new Date(`${date}T00:00:00Z`));
+
+const formatTripDeparture = (date: string) =>
+  new Intl.DateTimeFormat("fr-FR", {
+    weekday: "short",
+    day: "2-digit",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: "Indian/Antananarivo",
+  })
+    .format(new Date(date))
+    .toLocaleUpperCase("fr");
+
+const tripDepartureDate = (date: string) => {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Indian/Antananarivo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date(date));
+  const values = Object.fromEntries(
+    parts.map((part) => [part.type, part.value]),
+  );
+  return `${values.year}-${values.month}-${values.day}`;
+};
+
+const formatTripDuration = (start: string, end: string | null) => {
+  if (!end) return "À confirmer";
+  const minutes = Math.round(
+    (new Date(end).getTime() - new Date(start).getTime()) / 60_000,
+  );
+  if (!Number.isFinite(minutes) || minutes <= 0) return "À confirmer";
+  const hours = Math.floor(minutes / 60);
+  const remainingMinutes = minutes % 60;
+  return `${hours > 0 ? `${hours} h` : ""}${
+    hours > 0 && remainingMinutes > 0 ? " " : ""
+  }${remainingMinutes > 0 ? `${remainingMinutes} min` : ""}`;
+};
 
 const dateInAntananarivo = (daysFromToday = 0) => {
   const parts = new Intl.DateTimeFormat("en-CA", {
@@ -332,6 +379,7 @@ function App() {
   const [stayBudget, setStayBudget] = useState(200000);
   const [stayMessage, setStayMessage] = useState("");
   const [stayRequestLoading, setStayRequestLoading] = useState(false);
+  const [tripRequestLoading, setTripRequestLoading] = useState(false);
 
   useEffect(() => {
     if (!mobileMenuOpen) return;
@@ -363,8 +411,9 @@ function App() {
     void Promise.all([
       fetchPublishedEvents(),
       fetchPublishedAccommodations(),
+      fetchPublishedTransportOffers(),
     ])
-      .then(([events, accommodations]) => {
+      .then(([events, accommodations, transportOffers]) => {
         if (!active) return;
         const stayListings: Listing[] = accommodations.map((stay: PublishedAccommodation) => ({
           id: stay.id,
@@ -382,7 +431,33 @@ function App() {
             "Hébergement publié par un partenaire. La disponibilité doit être confirmée par ce partenaire.",
           source: "database",
         }));
-        setDatabaseListings([...events, ...stayListings]);
+        const tripListings: Listing[] = transportOffers.map(
+          (offer: PublishedTransportOffer) => ({
+            id: offer.id,
+            title: `${offer.operator} · ${offer.origin} → ${offer.destination}`,
+            category: `Voyage · ${offer.vehicle || "Transport partenaire"}`,
+            city: `${offer.origin} → ${offer.destination}`,
+            date: formatTripDeparture(offer.departureAt),
+            price: offer.priceMGA,
+            image:
+              "https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?auto=format&fit=crop&w=1200&q=85",
+            tag: "PARTENAIRE",
+            kind: "trip",
+            description:
+              "Trajet publié par un transporteur partenaire. Votre demande sera confirmée manuellement avant tout départ ; aucune place n’est réservée à l’envoi de la demande.",
+            source: "database",
+            tripVehicle: offer.vehicle || offer.operator,
+            tripDuration: formatTripDuration(
+              offer.departureAt,
+              offer.arrivalAt,
+            ),
+            transportOfferId: offer.id,
+            departureAt: offer.departureAt,
+            tripBaggage: offer.baggageDetails || undefined,
+            tripConditions: offer.conditions || undefined,
+          }),
+        );
+        setDatabaseListings([...events, ...stayListings, ...tripListings]);
       })
       .catch((error: unknown) => {
         if (!active) return;
@@ -501,6 +576,11 @@ function App() {
       const matchesDate =
         !eventDate ||
         (listing.kind === "event" && listing.eventDate === eventDate);
+      const matchesDepartureDate =
+        !departureDate ||
+        (listing.kind === "trip" &&
+          (!listing.departureAt ||
+            tripDepartureDate(listing.departureAt) === departureDate));
       const [routeOrigin = "", routeDestination = ""] = listing.city
         .split("→")
         .map((place) => place.trim().toLocaleLowerCase("fr"));
@@ -522,6 +602,7 @@ function App() {
         matchesQuery &&
         matchesCategory &&
         matchesDate &&
+        matchesDepartureDate &&
         matchesDeparture &&
         matchesDestination &&
         listing.price <= maxPrice
@@ -531,6 +612,7 @@ function App() {
     categoryFilter,
     city,
     departureLocation,
+    departureDate,
     destination,
     eventDate,
     maxPrice,
@@ -564,6 +646,7 @@ function App() {
     setStayBudget(200000);
     setStayMessage("");
     setStayRequestLoading(false);
+    setTripRequestLoading(false);
     setTicketQuantity(1);
     setTicketTypeId(
       listing.ticketOptions?.find((option) => option.availableQuantity > 0)
@@ -645,6 +728,43 @@ function App() {
       );
     } finally {
       setStayRequestLoading(false);
+    }
+  };
+
+  const submitTransportRequest = async () => {
+    if (
+      !selected ||
+      selected.kind !== "trip" ||
+      selected.source !== "database" ||
+      !selected.transportOfferId
+    ) {
+      setRequestSent(true);
+      return;
+    }
+    if (!user) {
+      setSelected(null);
+      setHeaderAction("login");
+      return;
+    }
+
+    setTripRequestLoading(true);
+    setOrderError(null);
+    try {
+      await createTransportRequest({
+        offerId: selected.transportOfferId,
+        passengerCount: stayGuests,
+        budgetMGA: stayBudget,
+        message: stayMessage,
+      });
+      setRequestSent(true);
+    } catch (error) {
+      setOrderError(
+        error instanceof Error
+          ? error.message
+          : "Impossible d’envoyer la demande de trajet.",
+      );
+    } finally {
+      setTripRequestLoading(false);
     }
   };
 
@@ -1068,7 +1188,7 @@ function App() {
           )}
           {catalogLoading && (
             <p className="catalog-status" role="status">
-              Chargement des événements publiés…
+              Chargement des offres partenaires publiées…
             </p>
           )}
           {catalogLoadError && (
@@ -1150,7 +1270,8 @@ function App() {
                     />
                     {listing.kind === "event" ? listing.date : listing.city}
                   </div>
-                  {listing.source === "database" && (
+                  {listing.source === "database" &&
+                    listing.kind === "event" && (
                     <div className="listing-place listing-event-location">
                       <Icon name="pin" size={15} />
                       {listing.venue
@@ -1158,7 +1279,8 @@ function App() {
                         : listing.city}
                     </div>
                   )}
-                  {listing.source === "database" && (
+                  {listing.source === "database" &&
+                    listing.kind === "event" && (
                     <div className="listing-place listing-stock">
                       <Icon name="ticket" size={15} />
                       {listing.ticketOptions?.some(
@@ -1175,6 +1297,18 @@ function App() {
                       {listing.tripDuration}
                     </div>
                   )}
+                  {listing.kind === "trip" && listing.source === "database" && (
+                    <div className="listing-place trip-details">
+                      <Icon name="calendar" size={15} />
+                      Départ : {listing.date}
+                    </div>
+                  )}
+                  {listing.kind === "trip" && listing.tripBaggage && (
+                    <div className="listing-place trip-details">
+                      <Icon name="check" size={15} />
+                      Bagages : {listing.tripBaggage}
+                    </div>
+                  )}
                   {listing.kind === "trip" && departureDate && (
                     <div className="listing-place trip-date-request">
                       <Icon name="calendar" size={15} />
@@ -1184,13 +1318,18 @@ function App() {
                   <div className="listing-price-row">
                     <span className="price-label">
                       {listing.source === "database"
-                        ? "Billet dès"
+                        ? listing.kind === "event"
+                          ? "Billet dès"
+                          : listing.kind === "stay"
+                            ? "Tarif indicatif"
+                            : "Par passager"
                         : listing.kind === "trip"
                           ? "Tarif indicatif"
                           : "À partir de"}
                     </span>
                     <strong>
                       {listing.source === "database" &&
+                      listing.kind === "event" &&
                       !listing.ticketOptions?.some(
                         (option) => option.availableQuantity > 0,
                       )
@@ -1200,7 +1339,8 @@ function App() {
                     </strong>
                   </div>
                   <span className="card-action">
-                    {listing.source === "database"
+                    {listing.source === "database" &&
+                    listing.kind === "event"
                       ? "Choisir un billet"
                       : listing.kind === "event"
                       ? "Voir l’événement"
@@ -1231,7 +1371,7 @@ function App() {
           <p className="demo-caption">
             <span />
             {databaseListings.length > 0
-              ? "Les événements « Partenaire » viennent du catalogue Supabase ; les autres offres sont fictives."
+              ? "Les offres « Partenaire » viennent du catalogue Supabase ; les autres offres sont fictives."
               : "Offres fictives à titre de démonstration · Prix indicatifs, en ariary malgaches"}
           </p>
         </section>
@@ -1385,12 +1525,18 @@ function App() {
                         {selected.source === "database" &&
                         selected.kind === "stay"
                           ? "Demande envoyée au partenaire"
+                          : selected.source === "database" &&
+                              selected.kind === "trip"
+                            ? "Demande envoyée au transporteur"
                           : "Parcours de démonstration terminé."}
                       </strong>
                       <small>
                         {selected.source === "database" &&
                         selected.kind === "stay"
                           ? "La demande reste en attente. Elle n’est confirmée que lorsque le partenaire dispose de places et l’approuve."
+                          : selected.source === "database" &&
+                              selected.kind === "trip"
+                            ? "Le transporteur doit confirmer le tarif, l’horaire et les places. Aucun siège n’est réservé par cette demande."
                           : "Aucune demande n’a été transmise et aucune réservation n’a été effectuée."}
                       </small>
                     </span>
@@ -1524,13 +1670,90 @@ function App() {
                           </label>
                         </div>
                       )}
+                    {selected.kind === "trip" &&
+                      selected.source === "database" && (
+                        <div className="stay-request-form">
+                          <div className="notice-box">
+                            <Icon name="bus" />
+                            <span>
+                              <strong>Départ proposé · {selected.date}</strong>
+                              <small>
+                                Le transporteur confirmera le départ et les
+                                places. Cette demande ne réserve aucun siège.
+                              </small>
+                            </span>
+                          </div>
+                          {(selected.tripBaggage ||
+                            selected.tripConditions) && (
+                            <div className="trip-request-conditions">
+                              {selected.tripBaggage && (
+                                <p>
+                                  <strong>Bagages :</strong>{" "}
+                                  {selected.tripBaggage}
+                                </p>
+                              )}
+                              {selected.tripConditions && (
+                                <p>
+                                  <strong>Conditions :</strong>{" "}
+                                  {selected.tripConditions}
+                                </p>
+                              )}
+                            </div>
+                          )}
+                          <div className="stay-request-grid">
+                            <label className="quantity-select">
+                              Passagers
+                              <select
+                                value={stayGuests}
+                                onChange={(event) =>
+                                  setStayGuests(Number(event.target.value))
+                                }
+                              >
+                                {Array.from({ length: 20 }, (_, index) => index + 1).map(
+                                  (count) => (
+                                    <option key={count} value={count}>
+                                      {count} passager{count === 1 ? "" : "s"}
+                                    </option>
+                                  ),
+                                )}
+                              </select>
+                            </label>
+                            <label className="quantity-select">
+                              Budget maximum par passager
+                              <input
+                                type="number"
+                                min="0"
+                                step="5000"
+                                value={stayBudget}
+                                onChange={(event) =>
+                                  setStayBudget(Number(event.target.value))
+                                }
+                              />
+                            </label>
+                          </div>
+                          <label className="quantity-select">
+                            Message au transporteur
+                            <textarea
+                              value={stayMessage}
+                              maxLength={500}
+                              onChange={(event) =>
+                                setStayMessage(event.target.value)
+                              }
+                              placeholder="Précisez vos besoins ou contraintes de voyage."
+                            />
+                          </label>
+                        </div>
+                      )}
                     {selected.id !== "partner" && (
                       <div className="dialog-price">
                         <span>
                           {selected.source === "database" &&
                           selected.kind === "stay"
                             ? "Tarif indicatif / nuit"
-                            : selected.source === "database"
+                            : selected.source === "database" &&
+                                selected.kind === "trip"
+                              ? "Tarif indicatif / passager"
+                              : selected.source === "database"
                               ? selectedTicketOption?.name ?? "Catégorie"
                             : selected.kind === "stay"
                               ? "Prix indicatif / nuit"
@@ -1598,6 +1821,9 @@ function App() {
                           {selected.source === "database" &&
                           selected.kind === "stay"
                             ? "Demande partenaire · aucune confirmation"
+                            : selected.source === "database" &&
+                                selected.kind === "trip"
+                              ? "Demande transporteur · aucun siège réservé"
                             : selected.source === "database"
                               ? "Commande en attente, aucun paiement"
                             : "Aucune confirmation réelle"}
@@ -1606,6 +1832,9 @@ function App() {
                           {selected.source === "database" &&
                           selected.kind === "stay"
                             ? "Aucun hébergement n’est présenté comme disponible : le partenaire doit vérifier les dates et confirmer la demande."
+                            : selected.source === "database" &&
+                                selected.kind === "trip"
+                              ? "Le prix, l’horaire et les places doivent être confirmés manuellement par le transporteur. Aucune réservation automatique n’est effectuée."
                             : selected.source === "database"
                               ? "Le stock est retenu jusqu’à l’expiration de la commande. Aucun billet QR n’est créé avant confirmation officielle du paiement par le serveur."
                             : selected.kind === "event"
@@ -1620,6 +1849,7 @@ function App() {
                       disabled={
                         creatingOrder ||
                         stayRequestLoading ||
+                        tripRequestLoading ||
                         (selected.source === "database" &&
                           selected.kind === "event" &&
                           (selectedTicketAvailability === 0 || !ticketTypeId))
@@ -1635,6 +1865,11 @@ function App() {
                           selected.source === "database"
                         ) {
                           void submitAccommodationRequest();
+                        } else if (
+                          selected.kind === "trip" &&
+                          selected.source === "database"
+                        ) {
+                          void submitTransportRequest();
                         } else if (selected.kind === "event") {
                           addToCart(selected);
                         } else {
@@ -1646,11 +1881,17 @@ function App() {
                         ? "Création de la commande…"
                         : stayRequestLoading
                           ? "Envoi de la demande…"
+                        : tripRequestLoading
+                          ? "Envoi de la demande…"
                         : selected.source === "database"
                           ? selected.kind === "stay"
                             ? user
                               ? "Envoyer la demande au partenaire"
                               : "Se connecter pour demander"
+                            : selected.kind === "trip"
+                              ? user
+                                ? "Envoyer la demande au transporteur"
+                                : "Se connecter pour demander"
                             : user
                               ? "Créer une commande en attente"
                               : "Se connecter pour commander"
