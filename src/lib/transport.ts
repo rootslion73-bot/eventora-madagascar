@@ -54,6 +54,7 @@ export async function fetchPublishedTransportOffers(): Promise<
     .eq("status", "published")
     .eq("manual_confirmation", true)
     .not("departure_at", "is", null)
+    .gt("departure_at", new Date().toISOString())
     .order("departure_at")
     .limit(100);
 

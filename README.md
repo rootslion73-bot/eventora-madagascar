@@ -1,6 +1,6 @@
-# eventora-madagascar — Eventora Madagascar, étapes 1 à 6
+# eventora-madagascar — Eventora Madagascar, étapes 1 à 7
 
-Interface responsive pour explorer des événements, des hébergements et des trajets à Madagascar. Les étapes 2 à 6 ajoutent l’authentification Supabase, la billetterie transactionnelle, le checkout Papi sandbox et les demandes de réservation traitées manuellement par les partenaires.
+Interface responsive pour explorer des événements, des hébergements et des trajets à Madagascar. Les étapes 2 à 7 ajoutent l’authentification Supabase, la billetterie transactionnelle, le checkout Papi sandbox et les demandes de réservation traitées manuellement par les partenaires, avec des vérifications de préproduction.
 
 ## Important
 
@@ -148,6 +148,20 @@ Les offres de transport doivent être publiées par un partenaire approuvé avec
 
 Pour la mise en ligne GitHub Pages, le workflow [`.github/workflows/deploy.yml`](./.github/workflows/deploy.yml) vérifie le build des pull requests et publie le dossier `dist/` après un push ou une fusion sur `main`. Le `base` Vite reste `/eventora-madagascar/`, nécessaire pour ce dépôt Pages. Si l’authentification/catalogue Supabase doit fonctionner sur le site publié, ajouter `VITE_SUPABASE_URL` et `VITE_SUPABASE_PUBLISHABLE_KEY` dans **GitHub → Settings → Secrets and variables → Actions**. N’ajoutez jamais une clé `service_role`, une clé secrète Supabase ou un secret Papi à GitHub côté frontend. Les migrations SQL et les Edge Functions ne sont pas déployées par le workflow Pages et doivent être appliquées/déployées séparément.
 
+## Étape 7 — Vérifications de préproduction
+
+Vérifications locales effectuées : `npm run build`, chargement de l’application sous le chemin `/eventora-madagascar/`, rendu à 360 px sans débordement horizontal, changement des champs vers départ/destination/date dans l’onglet Voyages, et fermeture du menu mobile lors du défilement. Le workflow GitHub Pages vérifie également le build sur les pull requests.
+
+Les contrôles suivants nécessitent un projet Supabase sandbox et des identifiants Papi sandbox ; ils ne sont pas validés par le simple build :
+
+- **Accès/RLS :** tester avec deux comptes clients et deux partenaires que chacun ne lit et ne modifie que ses commandes, réservations, offres et paiements autorisés. Vérifier qu’un client ne peut pas appeler les RPC de confirmation de billet/paiement ni répondre à la demande d’un autre partenaire.
+- **Concurrence :** confirmer simultanément deux demandes transport alors qu’il reste une seule place ; une seule confirmation doit réussir et `seats_sold` ne doit jamais dépasser `total_seats`. Répéter le contrôle avec les dernières unités d’hébergement.
+- **Paiement sandbox :** tester callback avec signature invalide, callback répété, montant/devise incorrects, paiement réussi, échec suivi d’une nouvelle tentative et callback tardif de l’ancien lien. Aucun QR ne doit être émis sans succès vérifié.
+- **Remboursement :** vérifier qu’un paiement après expiration ou un paiement supplémentaire reste `refund_pending`, sans émission supplémentaire de billet. Le remboursement monétaire n’est pas automatisé dans cette version : le rapprochement et l’action de remboursement restent opérateur/Papi.
+- **Parcours partenaire :** vérifier qu’un trajet ne réserve aucune place à sa demande, qu’un partenaire non propriétaire ne peut pas répondre et que seuls les trajets avec capacité connue et suffisante sont confirmables.
+
+L’environnement actuellement relié au navigateur affichait un événement intitulé « Événement de test — ne pas publier » avec le statut publié. Avant de partager ou promouvoir le site, archivez cette donnée de test dans Supabase et retirez les autres offres de test publiées. Je n’ai pas modifié les données distantes.
+
 ## Suite prévue
 
-La prochaine étape portera sur les intégrations de fournisseurs de transport lorsqu’un partenaire et une API autorisée seront disponibles.
+La prochaine évolution sera l’intégration des fournisseurs de transport, seulement lorsqu’un partenaire et une API autorisée seront disponibles.
